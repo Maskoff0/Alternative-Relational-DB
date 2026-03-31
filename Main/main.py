@@ -1,4 +1,5 @@
 import json
+import re
 
 #Implementing a simple relational database system in Python
 #Building a database engine
@@ -63,6 +64,97 @@ def execute_query(db, query):
         rows = [r for r in rows if r[column]> value]
     return [{col: row[col] for col in query["columns"]} for row in rows]
 
+#Adding parser logic
+def parser(self):
+    token = self.current().upper()
+    if token == "SELECT":
+        return self.parse_select()
+    elif token == "INSERT":
+        return self.parse_insert()
+    elif token == "CREATE":
+        return self.parse_create()
+    else:
+        raise Exception(f"Unknown command {token}")
+    
+#Create a table parser
+def parse_create(self):
+    self.advance()
+    if self.current().upper() != "TABLE":
+        raise Exception("Expected Table")
+    
+    self.advance()
+    table_name = self.current()
+    self.advance()
+    
+    if self.current() != "(":
+        raise Exception("Expected (")
+    self.advance()
+    
+    columns = {}
+    
+    while self.current() != ")":
+        column_name = self.current()
+        self.advance()
+        
+        column_type = self.current()
+        self.advance()
+        
+        columns[column_name] = column_type
+        
+        if self.current() == ",":
+            self.advance()
+            
+        self.advance()
+    return {
+        "type" : "CREATE",
+        "table_name" : table_name,
+        "columns" : columns
+    }
+    
+def parse_create_sql(sql):
+    sql = sql.strip().rstrip(";")
+    m = re.match(
+        r"^\s*CREATE\s+TABLE\s+([A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)\s*$",
+        sql,
+        re.I,
+    )
+    if not m:
+        raise ValueError("Invalid CREATE TABLE syntax. Use: CREATE TABLE name (col1 TYPE, col2 TYPE)")
+
+    table_name = m.group(1)
+    cols = m.group(2).strip()
+    if not cols:
+        raise ValueError("No columns found in CREATE TABLE")
+
+    column_names = []
+    for part in cols.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        tokens = part.split()
+        if len(tokens) < 1:
+            raise ValueError(f"Invalid column definition: '{part}'")
+        column_names.append(tokens[0])
+
+    return {"table_name": table_name, "columns": column_names}
+
+#Logic for executing table creation
+# query can be dict or SQL string
+def execute_create(db, query):
+    if isinstance(query, str):
+        query = parse_create_sql(query)
+
+    table_name = query.get("table_name")
+    columns = query.get("columns")
+    if not table_name or not columns:
+        raise ValueError("execute_create expects table_name and columns")
+
+    if table_name in db.tables:
+        raise ValueError(f"Table {table_name} already exists.")
+
+    create_tables(None, db, table_name, columns)
+    return db.tables[table_name]
+
 #Adding Persistence to the Database
 def save_db(db, path="db.json"):
     payload = {name: table.rows for name, table in db.tables.items()}
@@ -93,40 +185,3 @@ index = {
         42: [2]
     }
 }
-
-if __name__ == "__main__":
-    db = Database()
-    create_tables(None, db, "users", ["name", "age", "email"])
-
-    sample_rows = [
-        {"name": "Alice", "age": 28, "email": "alice@example.com"},
-        {"name": "Bob", "age": 35, "email": "bob@example.com"},
-        {"name": "Carol", "age": 42, "email": "carol@example.com"}
-    ]
-
-    for row in sample_rows:
-        insert(db.tables["users"], row)
-
-    print("\nDB CLI Demo")
-    print("1. List all users")
-    print("2. List users age > 30")
-    print("3. Run sample SELECT query")
-    print("4. Save DB to db.json")
-    print("5. Load DB from db.json and show users")
-    choice = input("Choose option (1-5): ").strip()
-
-    if choice == "1":
-        print(select(db.tables["users"]))
-    elif choice == "2":
-        print(select_where(db.tables["users"], "age", ">", 30))
-    elif choice == "3":
-        result = execute_query(db, {"type": "SELECT", "columns": ["name", "email"], "table": "users", "where": ("age", ">", 30)})
-        print(result)
-    elif choice == "4":
-        save_db(db)
-        print("Saved to db.json")
-    elif choice == "5":
-        loaded_db = load_db()
-        print(loaded_db.tables.get("users").rows if "users" in loaded_db.tables else [])
-    else:
-        print("Invalid option")

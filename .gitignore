@@ -1,0 +1,11 @@
+# Ignore virtual environments
+venv/
+Main/venv/
+**/venv/
+
+# Python cache and runtime files
+*.pyc
+__pycache__/
+
+# Database file
+db.json
